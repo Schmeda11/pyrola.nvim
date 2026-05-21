@@ -930,7 +930,7 @@ function M.setup_environment()
     })
 end
 
-local _pyrola_subcommands = { "init", "setup" }
+local _pyrola_subcommands = { "init", "setup", "shutdown", "quit", "stop", "exit" }
 
 function M.setup(opts)
     vim.env.PYTHONDONTWRITEBYTECODE = "1"
@@ -959,7 +959,11 @@ function M.setup(opts)
                 M.setup_environment()
                 return
             end
-            vim.notify("Pyrola: Unknown command. Try :Pyrola init or :Pyrola setup", vim.log.levels.WARN)
+            if subcommand == "shutdown" or subcommand == "quit" or subcommand == "stop" or subcommand == "exit" then
+                M.shutdown()
+                return
+            end
+            vim.notify("Pyrola: Unknown command. Try :Pyrola init, :Pyrola setup, or :Pyrola shutdown", vim.log.levels.WARN)
         end, {
             nargs = "*",
             complete = function(arg_lead)
@@ -971,6 +975,55 @@ function M.setup(opts)
         M.commands_set = true
     end
     return M
+end
+
+function M.shutdown()
+    local had_repl = M.term.opened == 1 or M.connection_file_path ~= nil
+
+    if not had_repl then
+        vim.notify("Pyrola: No active REPL to shutdown.", vim.log.levels.INFO)
+        return
+    end
+
+    local connection_file = M.connection_file_path
+    local filetype = M.filetype or vim.bo.filetype
+
+    if connection_file then
+        if rpc.is_running() then
+            pcall(rpc.request, "shutdown_kernel", { connection_file = connection_file }, 3000)
+        else
+            pcall(fn.ShutdownKernel, filetype, connection_file)
+        end
+        pcall(os.remove, connection_file)
+    end
+
+    if M.term.chanid and M.term.chanid ~= 0 then
+        pcall(fn.jobstop, M.term.chanid)
+    end
+
+    if M.term.winid and M.term.winid ~= 0 and api.nvim_win_is_valid(M.term.winid) then
+        pcall(api.nvim_win_close, M.term.winid, true)
+    end
+
+    if M.term.bufid and M.term.bufid ~= 0 and api.nvim_buf_is_valid(M.term.bufid) then
+        pcall(api.nvim_buf_delete, M.term.bufid, { force = true })
+    end
+
+    rpc.stop()
+
+    M.connection_file_path = nil
+    M.active_kernel_name = nil
+    M.filetype = nil
+    M.repl_ready = false
+    M.send_queue = {}
+    M.term = {
+        opened = 0,
+        winid = 0,
+        bufid = 0,
+        chanid = 0
+    }
+
+    vim.notify("Pyrola: REPL shutdown complete.", vim.log.levels.INFO)
 end
 
 function M.init(kernel_override)
