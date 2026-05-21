@@ -338,7 +338,9 @@ local function build_repl_env()
         PYROLA_IMAGE_CELL_WIDTH = tostring(cell_width),
         PYROLA_IMAGE_CELL_HEIGHT = tostring(cell_height),
         PYROLA_IMAGE_MAX_WIDTH_RATIO = tostring(max_width_ratio),
-        PYROLA_IMAGE_MAX_HEIGHT_RATIO = tostring(max_height_ratio)
+        PYROLA_IMAGE_MAX_HEIGHT_RATIO = tostring(max_height_ratio),
+        PYROLA_REPL_IMAGE_RENDER = image.repl_render == false and "0" or "1",
+        PYROLA_AUTO_FLOAT_IMAGE = image.auto_float == false and "0" or "1"
     }
 end
 

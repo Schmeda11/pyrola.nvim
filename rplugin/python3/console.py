@@ -111,6 +111,8 @@ class ReplInterpreter:
         self._interrupt_requested = False
         self._image_debug = os.environ.get("PYROLA_IMAGE_DEBUG", "0") == "1"
         self._auto_indent = os.environ.get("PYROLA_AUTO_INDENT", "0") == "1"
+        self._repl_image_render = os.environ.get("PYROLA_REPL_IMAGE_RENDER", "1") == "1"
+        self._auto_float_image = os.environ.get("PYROLA_AUTO_FLOAT_IMAGE", "1") == "1"
         self._cell_width = _read_env_int("PYROLA_IMAGE_CELL_WIDTH", 10)
         self._cell_height = _read_env_int("PYROLA_IMAGE_CELL_HEIGHT", 20)
         self._image_max_width_ratio = _read_env_float("PYROLA_IMAGE_MAX_WIDTH_RATIO", 0.5)
@@ -324,12 +326,9 @@ class ReplInterpreter:
         else:
             logo_lines = None
 
-        if logo_lines:
-            logo = _gradient_ansi_lines(logo_lines, (255, 196, 107), (255, 108, 0))
-            print_formatted_text(ANSI(logo))
         print_formatted_text(
             HTML(
-                f"<orange>\n    Welcome to Pyrola! kernel</orange> <ansired>{self.kernelname}</ansired> <orange>initialized!\n</orange>"
+                f"<orange>Hi @gschmeda! kernel</orange> <ansired>{self.kernelname}</ansired> <orange>initialized!\n</orange>"
             ),
             style=self.style,
         )
@@ -645,7 +644,9 @@ class ReplInterpreter:
                                     f"let g:pyrola_image_height = {int(new_height)}"
                                 )
                                 self.nvim.command(
-                                    'lua require("pyrola.image").show_image_file(vim.g.pyrola_image_path, vim.g.pyrola_image_width, vim.g.pyrola_image_height)'
+                                    'lua require("pyrola.image").'
+                                    + ("show_image_file" if self._auto_float_image else "record_image_file")
+                                    + '(vim.g.pyrola_image_path, vim.g.pyrola_image_width, vim.g.pyrola_image_height)'
                                 )
                                 self.nvim.command("unlet g:pyrola_image_path")
                                 self.nvim.command("unlet g:pyrola_image_width")
@@ -774,38 +775,39 @@ class ReplInterpreter:
                             tmp_path = tmp.name
                         self._register_temp_path(tmp_path)
 
-                        try:
-                            # Get terminal size explicitly since prompt_toolkit
-                            # may prevent timg from detecting it
-                            term_size = shutil.get_terminal_size()
-                            size_arg = f"-g{term_size.columns}x{term_size.lines}"
-                            proc = await asyncio.create_subprocess_exec(
-                                "timg", "-p", "q", size_arg, tmp_path,
-                                stdout=asyncio.subprocess.PIPE,
-                                stderr=asyncio.subprocess.PIPE,
-                            )
+                        if self._repl_image_render:
                             try:
-                                stdout_data, stderr_data = await asyncio.wait_for(
-                                    proc.communicate(), timeout=15
+                                # Get terminal size explicitly since prompt_toolkit
+                                # may prevent timg from detecting it
+                                term_size = shutil.get_terminal_size()
+                                size_arg = f"-g{term_size.columns}x{term_size.lines}"
+                                proc = await asyncio.create_subprocess_exec(
+                                    "timg", "-p", "q", size_arg, tmp_path,
+                                    stdout=asyncio.subprocess.PIPE,
+                                    stderr=asyncio.subprocess.PIPE,
                                 )
-                            except asyncio.TimeoutError:
-                                proc.kill()
-                                await proc.wait()
-                                print("timg timed out (15s)", file=sys.stderr)
-                                continue
-                            if stdout_data:
-                                sys.stdout.buffer.write(stdout_data)
-                                sys.stdout.flush()
-                            if proc.returncode != 0:
-                                raise subprocess.CalledProcessError(proc.returncode, "timg")
-                            if image_mime == "image/png" and self._nvim_address:
-                                self._start_nvim_thread()
-                                self.nvim_queue.put(("image", image_data))
-                        except (
-                            subprocess.CalledProcessError,
-                            FileNotFoundError,
-                        ) as e:
-                            print(f"Failed to display image: {e}")
+                                try:
+                                    stdout_data, stderr_data = await asyncio.wait_for(
+                                        proc.communicate(), timeout=15
+                                    )
+                                except asyncio.TimeoutError:
+                                    proc.kill()
+                                    await proc.wait()
+                                    print("timg timed out (15s)", file=sys.stderr)
+                                    continue
+                                if stdout_data:
+                                    sys.stdout.buffer.write(stdout_data)
+                                    sys.stdout.flush()
+                                if proc.returncode != 0:
+                                    raise subprocess.CalledProcessError(proc.returncode, "timg")
+                            except (
+                                subprocess.CalledProcessError,
+                                FileNotFoundError,
+                            ) as e:
+                                print(f"Failed to display image: {e}")
+                        if image_mime == "image/png" and self._nvim_address:
+                            self._start_nvim_thread()
+                            self.nvim_queue.put(("image", image_data))
                     except Exception as e:
                         print(f"Error handling image: {e}")
                     finally:

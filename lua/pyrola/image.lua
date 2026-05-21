@@ -649,6 +649,19 @@ function M.show_image_file(path, width, height)
     display_image(content, width, height, true, false, true)
 end
 
+function M.record_image_file(path, width, height)
+    if type(path) ~= "string" or path == "" then
+        vim.notify("Pyrola: Image path missing or invalid.", vim.log.levels.WARN)
+        return
+    end
+    local content = read_file(path)
+    if not content or content == "" then
+        vim.notify("Pyrola: Image file empty or unreadable.", vim.log.levels.WARN)
+        return
+    end
+    push_history({data = content, width = tonumber(width or 300), height = tonumber(height or 300)})
+end
+
 local function show_history_at(index, focus)
     if #M.history == 0 then
         vim.notify("Pyrola: No image history available.", vim.log.levels.WARN)
