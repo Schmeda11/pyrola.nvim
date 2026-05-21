@@ -949,17 +949,19 @@ function M.setup(opts)
     end
     if not M.commands_set then
         api.nvim_create_user_command("Pyrola", function(cmd)
-            if cmd.args == "init" then
-                M.init()
+            local subcommand = cmd.fargs[1]
+            local kernel_override = cmd.fargs[2]
+            if subcommand == "init" then
+                M.init(kernel_override)
                 return
             end
-            if cmd.args == "setup" then
+            if subcommand == "setup" then
                 M.setup_environment()
                 return
             end
             vim.notify("Pyrola: Unknown command. Try :Pyrola init or :Pyrola setup", vim.log.levels.WARN)
         end, {
-            nargs = 1,
+            nargs = "*",
             complete = function(arg_lead)
                 return vim.tbl_filter(function(s)
                     return s:find(arg_lead, 1, true) == 1
@@ -971,7 +973,7 @@ function M.setup(opts)
     return M
 end
 
-function M.init()
+function M.init(kernel_override)
     local python_executable = validate_python_host()
     if not python_executable then
         return
@@ -981,7 +983,12 @@ function M.init()
     end
     check_timg_available()
     local filetype = vim.bo.filetype
-    local kernelname, kernel_err = resolve_kernel_name(filetype)
+    local kernelname, kernel_err
+    if type(kernel_override) == "string" and kernel_override ~= "" then
+        kernelname = kernel_override
+    else
+        kernelname, kernel_err = resolve_kernel_name(filetype)
+    end
     if not kernelname then
         vim.notify(
             kernel_err or string.format("Pyrola: No kernel mapped for filetype '%s'. Update setup.kernel_map.", filetype),
